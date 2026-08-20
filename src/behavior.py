@@ -20,20 +20,26 @@ class PersonIncident:
 
     def update(self,label,confidence,velocity,movement,now=None):
         now=time.time() if now is None else now
-        self.peak_velocity=max(self.peak_velocity,abs(float(velocity)))
-        self.peak_confidence=max(self.peak_confidence,float(confidence))
+        self.peak_velocity=max(self.peak_velocity,abs(float(velocity))); self.peak_confidence=max(self.peak_confidence,float(confidence))
         if movement>.01: self.last_movement=now
         if label=='FALLING': self.fall_start=self.fall_start or now; self.state=State.FALLING
         elif label=='FALLEN':
             self.fall_start=self.fall_start or now; self.ground_start=self.ground_start or now; self.state=State.FALLEN; self.recovery_frames=0
-        elif label=='RECOVERING':
-            if self.state==State.FALLEN: self.recovery_attempts+=1
-            self.state=State.RECOVERING; self.recovery_frames=0
+        elif label=='RECOVERING': self._start_recovery()
         elif label=='NORMAL':
             if self.state in (State.FALLEN,State.RECOVERING):
                 self.recovery_frames+=1
                 if self.recovery_frames>=8: self.state=State.RECOVERED
             else: self.state=State.NORMAL
+
+        # Recovery is deliberately a behavioral layer: the LSTM has only three
+        # core labels, while motion after FALLEN provides the recovery signal.
+        if self.state==State.FALLEN and movement>.03:
+            self._start_recovery()
+
+    def _start_recovery(self):
+        if self.state==State.FALLEN: self.recovery_attempts+=1
+        self.state=State.RECOVERING; self.recovery_frames=0
 
     @property
     def ground_duration(self): return 0.0 if self.ground_start is None else time.time()-self.ground_start
