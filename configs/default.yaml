@@ -1,0 +1,18 @@
+sequence_length: 30
+fps_assumption: 30
+fall_confidence: 0.60
+recovery_frames: 8
+immobility_seconds: 5
+high_risk_threshold: 70
+critical_risk_threshold: 85
+movement_velocity_threshold: 0.015
+feature_names:
+  - body_angle
+  - body_height
+  - body_shape
+  - vertical_velocity
+  - vertical_acceleration
+  - joint_angle_mean
+  - joint_angle_variability
+  - immobility
+  - pose_confidence
