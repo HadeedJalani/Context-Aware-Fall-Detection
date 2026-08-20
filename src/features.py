@@ -13,7 +13,8 @@ def joint_angle(a, b, c):
     if den < 1e-8: return 0.0
     return float(math.degrees(math.acos(np.clip(np.dot(u, v) / den, -1, 1))))
 
-def extract_features(keypoints, previous=None, dt=1/30):
+def extract_features(keypoints, previous=None, previous_previous=None, dt=1/30):
+    """Return the 9 context-aware temporal features for a COCO-17 pose."""
     kp = np.asarray(keypoints, dtype=float)
     if kp.shape[0] < 17: return np.zeros(9, dtype=np.float32)
     ls, rs = kp[5], kp[6]; lh, rh = kp[11], kp[12]
@@ -25,8 +26,14 @@ def extract_features(keypoints, previous=None, dt=1/30):
     h = float(visible[:,1].max()-visible[:,1].min()) if len(visible) else 0
     shape = w / max(h, 1e-6)
     angles = [joint_angle(ls[:2],lh[:2],lk[:2]), joint_angle(rs[:2],rh[:2],rk[:2]), joint_angle(lh[:2],lk[:2],la[:2]), joint_angle(rh[:2],rk[:2],ra[:2])]
-    if previous is None: vel=acc=immobility=0.0
+    if previous is None:
+        vel=acc=immobility=0.0
     else:
         p=np.asarray(previous,float); pc=((p[11,:2]+p[12,:2])/2+(p[5,:2]+p[6,:2])/2)/2
-        vel=float((center[1]-pc[1])/max(dt,1e-6)); acc=0.0; immobility=float(np.linalg.norm(center-pc)<.01)
+        vel=float((center[1]-pc[1])/max(dt,1e-6)); immobility=float(np.linalg.norm(center-pc)<.01)
+        acc=0.0
+        if previous_previous is not None:
+            pp=np.asarray(previous_previous,float); ppc=((pp[11,:2]+pp[12,:2])/2+(pp[5,:2]+pp[6,:2])/2)/2
+            prev_vel=float((pc[1]-ppc[1])/max(dt,1e-6))
+            acc=float((vel-prev_vel)/max(dt,1e-6))
     return np.array([angle_from_vertical(shoulder,hip),center[1],shape,vel,acc,float(np.mean(angles)),float(np.std(angles)),immobility,float(np.mean(kp[:,2]))],dtype=np.float32)
