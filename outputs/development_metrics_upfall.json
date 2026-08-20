@@ -1,0 +1,25 @@
+{
+  "model": "BiGRU-Attention + focal loss",
+  "input_features": 9,
+  "sequence_length": 30,
+  "accuracy": 0.9634591961,
+  "macro_f1": 0.8319850768,
+  "classes": ["NORMAL", "FALLING", "FALLEN"],
+  "precision": {
+    "NORMAL": 0.8333333333,
+    "FALLING": 0.5517241379,
+    "FALLEN": 0.9960369881
+  },
+  "recall": {
+    "NORMAL": 0.8333333333,
+    "FALLING": 0.8888888889,
+    "FALLEN": 0.9679075738
+  },
+  "f1": {
+    "NORMAL": 0.8333333333,
+    "FALLING": 0.6808510638,
+    "FALLEN": 0.9817708333
+  },
+  "confusion_matrix": [[5,1,0],[1,32,3],[0,25,754]],
+  "evaluation_note": "Development result using the supplied upfall_sequences.npz. The NPZ split was inherited from the supplied artifact; it is not an external-video or subject-disjoint generalization result. The source skeleton archive available for this experiment contains fall scenarios but not the full ADL set, so these numbers must not be presented as final real-world performance."
+}
