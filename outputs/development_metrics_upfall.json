@@ -1,25 +1,16 @@
 {
-  "model": "BiGRU-Attention + focal loss",
+  "model": "2-layer GRU + moderate class-weighted cross entropy",
   "input_features": 9,
   "sequence_length": 30,
-  "accuracy": 0.9634591961,
-  "macro_f1": 0.8319850768,
+  "accuracy": 0.9780755176613886,
+  "macro_f1": 0.8769881010895388,
   "classes": ["NORMAL", "FALLING", "FALLEN"],
-  "precision": {
-    "NORMAL": 0.8333333333,
-    "FALLING": 0.5517241379,
-    "FALLEN": 0.9960369881
-  },
-  "recall": {
-    "NORMAL": 0.8333333333,
-    "FALLING": 0.8888888889,
-    "FALLEN": 0.9679075738
-  },
-  "f1": {
-    "NORMAL": 0.8333333333,
-    "FALLING": 0.6808510638,
-    "FALLEN": 0.9817708333
-  },
-  "confusion_matrix": [[5,1,0],[1,32,3],[0,25,754]],
-  "evaluation_note": "Development result using the supplied upfall_sequences.npz. The NPZ split was inherited from the supplied artifact; it is not an external-video or subject-disjoint generalization result. The source skeleton archive available for this experiment contains fall scenarios but not the full ADL set, so these numbers must not be presented as final real-world performance."
+  "precision": {"NORMAL": 0.8571428571, "FALLING": 0.8214285714, "FALLEN": 0.9847328244},
+  "recall": {"NORMAL": 1.0, "FALLING": 0.6388888889, "FALLEN": 0.9935815148},
+  "f1": {"NORMAL": 0.9230769231, "FALLING": 0.71875, "FALLEN": 0.9891373802},
+  "confusion_matrix": [[6,0,0],[1,23,12],[0,5,774]],
+  "test_size": 821,
+  "class_counts": {"train": [39,167,3620], "test": [6,36,779]},
+  "status": "development_result",
+  "evaluation_note": "This is a development result using the supplied upfall_sequences.npz. The artifact is strongly imbalanced and contains only 6 NORMAL and 36 FALLING test sequences. It is not a subject-disjoint or external-video generalization result. ADL-rich normal data and external validation are still required before final claims."
 }
