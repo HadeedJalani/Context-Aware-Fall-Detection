@@ -1,12 +1,13 @@
 """Prepare FUKinect 20-joint Kinect skeleton MAT files for temporal training.
 
-The utility keeps dataset-specific parsing separate from the live YOLO/pose
-pipeline. It extracts the nine temporal features used by the FUKinect Phase B.2
-experiment and creates video-disjoint temporal windows.
+The dataset adapter is deliberately separate from the live YOLO/pose pipeline.
+It converts Kinect skeletons into the same nine temporal feature families used
+by the project and creates 30-frame windows with subject-disjoint splits.
 
-Usage:
-    python tools/prepare_fukinect.py --input data/raw/fukinect/skeleton \
-        --output data/processed/fukinect_sequences.npz
+Labels:
+    0 NORMAL   - everyday ADL activity or stable pre-fall context
+    1 FALLING  - transition immediately before the estimated impact
+    2 FALLEN   - post-impact state
 """
 from __future__ import annotations
 import argparse, math
@@ -15,13 +16,8 @@ import numpy as np
 from scipy.io import loadmat
 from scipy.ndimage import gaussian_filter1d
 
-ACTIVITIES = {"walking": 0, "bending": 0, "sitting": 0, "squatting": 0,
-              "lying": 0, "falling": None}
-FEATURES = {
-    5: [0, 1, 2, 3, 8],
-    7: [0, 1, 2, 3, 4, 5, 8],
-    9: list(range(9)),
-}
+ACTIVITIES = {"walking": 0, "bending": 0, "sitting": 0, "squatting": 0, "lying": 0, "falling": None}
+FEATURES = {5: [0, 1, 2, 3, 8], 7: [0, 1, 2, 3, 4, 5, 8], 9: list(range(9))}
 
 
 def joint_angle(a, b, c):
@@ -46,18 +42,13 @@ def features(s):
         width = q[:, 0].max() - q[:, 0].min()
         height = q[:, 1].max() - q[:, 1].min()
         shape = width / max(height, 1e-4)
-        angles = [
-            joint_angle(q[4], q[12], q[13]),
-            joint_angle(q[8], q[16], q[17]),
-            joint_angle(q[12], q[13], q[14]),
-            joint_angle(q[16], q[17], q[18]),
-        ]
+        angles = [joint_angle(q[4], q[12], q[13]), joint_angle(q[8], q[16], q[17]),
+                  joint_angle(q[12], q[13], q[14]), joint_angle(q[16], q[17], q[18])]
         if t == 0:
             vel = acc = motion = depth_vel = 0.0
         else:
             p = s[t - 1]
-            ps = (p[4] + p[8]) / 2
-            ph = (p[12] + p[16]) / 2
+            ps, ph = (p[4] + p[8]) / 2, (p[12] + p[16]) / 2
             pc = (ps + ph) / 2
             pscale = max(np.linalg.norm(ps - ph) + np.linalg.norm(ph - (p[15] + p[19]) / 2), 1e-3)
             vel = (center[1] - pc[1]) / pscale * 30.0
@@ -81,19 +72,24 @@ def impact_index(s):
 def windows(s, activity):
     feat = features(s)
     n = len(feat)
+    if n < 30:
+        return []
     if activity != "falling":
+        # ADLs are explicitly NORMAL.  We subsample windows to avoid a single
+        # long recording dominating the class distribution.
         return [(feat[e - 29:e + 1], 0) for e in range(29, n, 10)]
+
     impact = impact_index(s)
     out = []
-    for e in (impact - 15, impact - 5):
-        if 29 <= e < n:
-            out.append((feat[e - 29:e + 1], 0))
-    for e in range(max(29, impact - 10), min(n, impact + 6), 3):
+    # Pre-impact context stays NORMAL until the fall transition begins.
+    for e in range(max(29, impact - 24), max(29, impact - 11), 4):
+        out.append((feat[e - 29:e + 1], 0))
+    # Falling windows are centered on the transition and terminate at impact.
+    for e in range(max(29, impact - 10), impact + 1, 2):
         out.append((feat[e - 29:e + 1], 1))
-    for e in range(max(29, impact + 8), n, 3):
+    # Post-impact windows represent the fallen state.
+    for e in range(impact + 5, n, 4):
         out.append((feat[e - 29:e + 1], 2))
-    if n >= 30 and impact + 8 < n:
-        out.append((feat[-30:], 2))
     return out
 
 
@@ -106,34 +102,44 @@ def main():
     root = Path(args.input)
     records = []
     for path in sorted(root.rglob("*.mat")):
-        activity = path.parent.parent.name
-        subject = int(path.parent.name)
+        activity = path.parent.parent.name.lower()
+        try:
+            subject = int(path.parent.name)
+        except ValueError:
+            continue
+        if activity not in ACTIVITIES:
+            continue
         skeleton = loadmat(path)["iskelet"].astype(np.float32).reshape(-1, 20, 3)
         for seq, label in windows(skeleton, activity):
             records.append((subject, activity, path.stem, seq, label))
-    videos = sorted({(r[0], r[1], r[2]) for r in records})
+
+    subjects = sorted({r[0] for r in records})
     rng = np.random.default_rng(args.seed)
-    rng.shuffle(videos)
-    n = len(videos)
-    train_v = set(videos[:int(.70 * n)])
-    val_v = set(videos[int(.70 * n):int(.85 * n)])
-    test_v = set(videos[int(.85 * n):])
+    rng.shuffle(subjects)
+    n = len(subjects)
+    train_s = set(subjects[:int(.70 * n)])
+    val_s = set(subjects[int(.70 * n):int(.85 * n)])
+    test_s = set(subjects[int(.85 * n):])
+
     result = {}
     for width, cols in FEATURES.items():
         split = {k: [] for k in ("train_x", "train_y", "val_x", "val_y", "test_x", "test_y")}
         for subject, activity, stem, seq, label in records:
-            key = (subject, activity, stem)
-            name = "train" if key in train_v else "val" if key in val_v else "test"
+            name = "train" if subject in train_s else "val" if subject in val_s else "test"
             split[name + "_x"].append(seq[:, cols])
             split[name + "_y"].append(label)
         result[width] = {
             k: np.stack(v).astype(np.float32) if k.endswith("_x") else np.asarray(v, dtype=np.int64)
-            for k, v in split.items()
+            for k, v in split.items() if v
         }
+
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(out, **{f"{w}_{k}": v for w, d in result.items() for k, v in d.items()})
-    print(f"Prepared {len(records)} windows from {len(videos)} videos -> {out}")
+    payload = {f"{w}_{k}": v for w, d in result.items() for k, v in d.items()}
+    payload.update({"train_subjects": np.asarray(sorted(train_s)), "val_subjects": np.asarray(sorted(val_s)), "test_subjects": np.asarray(sorted(test_s))})
+    np.savez_compressed(out, **payload)
+    print(f"Prepared {len(records)} windows from {len(subjects)} subjects -> {out}")
+    print(f"Subject split: train={sorted(train_s)}, val={sorted(val_s)}, test={sorted(test_s)}")
 
 
 if __name__ == "__main__":
