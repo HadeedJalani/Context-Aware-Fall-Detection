@@ -1,0 +1,76 @@
+name: FUKinect v2 training
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/prepare_fukinect.py'
+      - 'tools/train_fukinect_v2.py'
+      - 'models/context_lstm_v2.py'
+      - '.github/workflows/fukinect-v2.yml'
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unrar wget
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy torch onnx onnxruntime
+
+      - name: Download FUKinect skeleton data
+        run: |
+          mkdir -p data/raw
+          wget -q --show-progress \
+            'https://github.com/MuzafferAslan23/Fall-Detection-Dataset/raw/master/skeleton.rar' \
+            -O data/raw/skeleton.rar
+          ls -lh data/raw/skeleton.rar
+
+      - name: Extract skeleton data
+        run: |
+          mkdir -p data/fukinect
+          unrar x -o+ data/raw/skeleton.rar data/fukinect/
+          find data/fukinect -type f | head -20
+
+      - name: Prepare subject-disjoint windows
+        run: |
+          PYTHONPATH=. python tools/prepare_fukinect.py \
+            --input data/fukinect \
+            --output data/fukinect_sequences.npz
+
+      - name: Train v2 model
+        run: |
+          PYTHONPATH=. python tools/train_fukinect_v2.py \
+            --data data/fukinect_sequences.npz \
+            --device cpu
+
+      - name: Verify ONNX
+        run: |
+          python - <<'PY'
+          import onnx
+          onnx.checker.check_model('models/context_aware_fall_lstm_v2.onnx')
+          print('ONNX verification passed')
+          PY
+
+      - name: Upload trained artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-aware-fall-v2
+          path: |
+            models/context_aware_fall_lstm_v2.pt
+            models/context_aware_fall_lstm_v2.onnx
+            outputs/fukinect_v2_metrics.json
+            outputs/fukinect_v2_history.json
+            outputs/fukinect_v2_metadata.json
